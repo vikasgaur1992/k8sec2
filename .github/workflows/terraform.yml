@@ -1,0 +1,57 @@
+name: 'Terraform CI/CD'
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write # Required if using AWS OIDC authentication instead of static keys
+
+jobs:
+  terraform:
+    name: 'Terraform Plan & Apply'
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Clone the repository code onto the GitHub runner
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. Configure AWS Credentials safely using GitHub Secrets
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1 # Change to your target region
+
+    # 3. Setup the Terraform CLI on the runner
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.7.0 # Specify your preferred Terraform version
+
+    # 4. Check for syntax errors and formatting
+    - name: Terraform Format Check
+      run: terraform fmt -check
+
+    # 5. Initialize the backend (S3/DynamoDB) and download providers
+    - name: Terraform Init
+      run: terraform init
+
+    # 6. Run a dry-run plan for visibility
+    - name: Terraform Plan
+      id: plan
+      run: terraform plan -no-color
+      continue-on-error: false
+
+    # 7. Automatically apply the changes ONLY when pushing to the main branch
+    # (This step is skipped on pull requests)
+    - name: Terraform Apply
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: terraform apply -auto-approve -no-color
