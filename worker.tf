@@ -49,7 +49,7 @@ resource "aws_security_group" "k8s_worker_sg" {
     from_port   = 10250
     to_port     = 10250
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] 
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # Kube-Proxy Health Check 

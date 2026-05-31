@@ -86,7 +86,7 @@ resource "aws_instance" "k8s_node" {
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
 
   root_block_device {
-    volume_size           = 80 
+    volume_size           = 80
     volume_type           = "gp3"
     delete_on_termination = true
   }
