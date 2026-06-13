@@ -63,6 +63,17 @@ kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/
 kubectl set env daemonset/calico-node -n kube-system IP_AUTODETECTION_METHOD=interface=enX0
 # Verify the master node shifts into a 'Ready' status context
 kubectl get nodes
+
+# 1. Download the verified etcd binary archive (v3.5.11 matches standard v1.29 setups)
+curl -LO https://github.com/etcd-io/etcd/releases/download/v3.5.11/etcd-v3.5.11-linux-amd64.tar.gz
+# 2. Extract the archive contents
+tar -xvf etcd-v3.5.11-linux-amd64.tar.gz
+# 3. Move only the etcdctl command line tool into your system binaries directory
+sudo mv etcd-v3.5.11-linux-amd64/etcdctl /usr/local/bin/
+# 4. Clean up the leftover download files
+rm -rf etcd-v3.5.11-linux-amd64*
+# 5. Verify it runs successfully
+etcdctl version
 +++++++++++++++++++++++++++++++++++++++++
 Only one network config to be used
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml 
