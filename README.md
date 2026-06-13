@@ -1,14 +1,42 @@
 # k8sec2 Master node setup 
 ######################################
-free -m
+#########################################
+Final Deployment Steps
+#########################
+# Disable Swap (Your steps were correct here)
 swapoff -a
-cat /etc/fstab 
-sudo sed -i '/swap/d' /etc/fstab
-yum install docker -y
-systemctl enable docker
-systemctl start docker
-rpm --import https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+sudo sed -i '/swap/d' /etc/stab
+# Set SELinux to Permissive
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+# Load required kernel modules
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+sudo modprobe overlay
+sudo modprobe br_netfilter
+# Configure sysctl parameters for networking
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+# Apply sysctl parameters immediately without rebooting
+sudo sysctl --system
 
+# Install containerd via standard Docker repo engine packaging
+yum install -y yum-utils
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+yum install -y containerd.io
+# Generate default containerd config and enforce SystemdCgroup driver usage
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/etc/containerd/config.toml
+# Start and enable containerd
+systemctl enable --now containerd
+
+# Add the formal repository config (Fixed syntax from your snippet).   ##Install Kubernetes Components (v1.29)
 cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
@@ -17,17 +45,23 @@ enabled=1
 gpgcheck=1
 gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
 EOF
-# Install
-yum install -y kubelet kubeadm kubectl
+# Install binaries
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 systemctl enable --now kubelet
-++++++++++++++++++
-Initialize cluster
-sudo kubeadm init --pod-network-cidr=10.244.0.0/1  - test
-After kubeadm init --apiserver-advertise-address=(private_ip) --pod-network-cidr=192.168.0.0/16
+
+# Initialize using the correct private IP advertises address and Calico default CIDR block
+sudo kubeadm init \
+  --apiserver-advertise-address=<YOUR_PRIVATE_IP> \
+  --pod-network-cidr=192.168.0.0/16
+# Configure your root shell credentials profile to map cluster access
 export KUBECONFIG=/etc/kubernetes/admin.conf
 echo 'export KUBECONFIG=/etc/kubernetes/admin.conf' | sudo tee -a /etc/profile
-Run - kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
-kubectset env daemonset/calico-node -n kube-system IP_AUTODETECTION_METHOD=interface=enX0
+
+# Apply Calico manifest rules
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+# Explicitly set interface auto-detection parameters if using custom network adapters (e.g., AWS enX0)
+kubectl set env daemonset/calico-node -n kube-system IP_AUTODETECTION_METHOD=interface=enX0
+# Verify the master node shifts into a 'Ready' status context
 kubectl get nodes
 +++++++++++++++++++++++++++++++++++++++++
 Only one network config to be used
@@ -57,30 +91,42 @@ systemctl enable containerd
 systemctl restart containerd
 ###############################################
 Workernode setup
+# Disable Swap
 swapoff -a
-sed -i '/swap/d' /etc/fstab
-modprobe overlay
-modprobe br_netfilter
-cat <<EOF | tee /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-iptables = 1
-net.ipv4.ip_forward = 1
+sudo sed -i '/swap/d' /etc/fstab
+# Set SELinux to Permissive
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+# Load required kernel modules
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+sudo modprobe overlay
+sudo modprobe br_netfilter
+# Configure sysctl parameters for networking
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
 EOF
-sysctl --system
+# Apply sysctl parameters immediately
+sudo sysctl --system
+
+# Install containerd via standard Docker repo engine packaging
+yum install -y yum-utils
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 yum install -y containerd
-mkdir -p /etc/containerd
-containerd config default | tee /etc/containerd/config.toml
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+# Generate default containerd config and enforce SystemdCgroup driver usage
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+# Start and enable containerd
 systemctl enable --now containerd
-+++++++++++++++++++++++++++++++++++++
-cat <<EOF | tee /etc/crictl.yaml
-runtime-endpoint: unix:///run/containerd/containerd.sock
-image-endpoint: unix:///run/containerd/containerd.sock
-timeout: 10
-debug: false
-EOF
-+++++++++++++++++++++++++++++
-cat <<EOF | tee /etc/yum.repos.d/kubernetes.repo
+
+# Add the repository config
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
 baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
@@ -88,16 +134,17 @@ enabled=1
 gpgcheck=1
 gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
 EOF
-++++++++++++++++++++++++++++
-yum install -y kubelet kubeadm kubectl
+
+# Install binaries
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 systemctl enable --now kubelet
+
+kubeadm join 172.31.34.126:6443 --token <token> --discovery-token-ca-cert-hash sha256:
+kubectl get nodes
 +++++++++++++++++++
 Master Node - token valid for 24 hours only
 kubeadm token create --print-join-command
 kubeadm join 172.31.34.81:6443 --token 4nqtes.okcey4rlzpnjixd5 --discovery-token-ca-cert-hash sha256:c5923ebed4b51492bc6b9131b8c6167e45ed591dd48b3fb934462539248715d1
-++++++++++++++++++++++++
-On Worker node, output of above command
-kubeadm join 172.31.44.157:6443 --token 4nqtes.okcey4rlzpnjixd5 --discovery-token-ca-cert-hash sha256:c5923ebed4b51492bc6b9131b8c6167e45ed591dd48b3fb934462539248715d1
 +++++++++++++++++++++++++++
 Test workload
 kubectl create deployment nginx --image=nginx
